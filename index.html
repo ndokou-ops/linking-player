@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英語発音＆リンキング解析プレイヤー</title>
+    <!-- OGP Meta Tags for Sharing -->
+    <meta property="og:title" content="英語発音＆リンキング解析プレイヤー">
+    <meta property="og:description" content="英文を入力するだけで、ネイティブの音のつながり（連結・融合・リダクション・脱落）とカタカナ発音を自動解析＆音声再生！">
+    <meta property="og:type" content="website">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* リンキングアークの装飾 */
+        .arc-connector {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            line-height: 1;
+            transform: translateY(3px);
+        }
+        /* 再生中のアクティブハイライト */
+        .chunk-speaking {
+            transform: scale(1.04);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.35);
+        }
+        /* トーストアニメーション */
+        @keyframes slideUpFade {
+            from { opacity: 0; transform: translate(-50%, 12px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .toast-enter {
+            animation: slideUpFade 0.25s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col items-center justify-start sm:justify-center p-3 sm:p-6">
+
+    <!-- メインアプリケーションコンテナ -->
+    <main class="w-full max-w-2xl bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden my-auto">
+        
+        <!-- ヘッダー -->
+        <header class="bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 px-5 py-4 sm:px-7 sm:py-5 text-white flex items-center justify-between gap-2">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">Connected Speech Analyzer</span>
+                </div>
+                <h1 class="text-lg sm:text-xl font-extrabold mt-1 tracking-tight">英語発音・リンキング解析プレイヤー</h1>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <!-- 再生ステータス -->
+                <div id="statusBadge" class="hidden items-center gap-1.5 bg-emerald-500/25 border border-emerald-300/40 px-3 py-1.5 rounded-full text-xs font-bold text-white">
+                    <span class="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
+                    <span>再生中</span>
+                </div>
+                <!-- URLシェアボタン -->
+                <button id="shareUrlBtn" type="button" title="現在の英文を含むURLをコピー"
+                    class="bg-white/15 hover:bg-white/25 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl border border-white/25 transition-all flex items-center gap-1.5 cursor-pointer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+                    </svg>
+                    <span class="hidden sm:inline">URL共有</span>
+                </button>
+            </div>
+        </header>
+
+        <div class="p-4 sm:p-7 space-y-5">
+
+            <!-- 英文入力 ＆ プリセットエリア -->
+            <section class="space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <label for="sentenceInput" class="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                        </svg>
+                        練習したい英文を入力（リアルタイム解析）
+                    </label>
+                    <button id="clearInputBtn" type="button" class="text-xs font-medium text-slate-400 hover:text-indigo-600 px-2 py-1 rounded transition-colors cursor-pointer">
+                        クリア
+                    </button>
+                </div>
+
+                <textarea id="sentenceInput" rows="2" placeholder="英語のフレーズや文章を入力してください..."
+                    class="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded-2xl p-3.5 text-base sm:text-lg font-semibold text-slate-900 transition-all resize-none leading-snug">We ran out of milk yesterday.</textarea>
+
+                <!-- プリセットフレーズ -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-[11px] font-bold text-slate-400">代表的なリンキング例文（タップで試す）：</span>
+                    </div>
+                    <div id="presetContainer" class="flex flex-wrap gap-1.5">
+                        <!-- JSで生成 -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- 解析結果・ビジュアルカード表示エリア -->
+            <section class="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-4 sm:p-6 space-y-4">
+                
+                <!-- 凡例（4種類の音声変化） -->
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/80">
+                    <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+                        <span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md border border-blue-200">
+                            <span class="w-2 h-2 rounded-full bg-blue-500"></span>連結
+                        </span>
+                        <span class="inline-flex items-center gap-1 bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md border border-purple-200">
+                            <span class="w-2 h-2 rounded-full bg-purple-500"></span>音の融合
+                        </span>
+                        <span class="inline-flex items-center gap-1 bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md border border-amber-200">
+                            <span class="w-2 h-2 rounded-full bg-amber-500"></span>弱化・弾き音
+                        </span>
+                        <span class="inline-flex items-center gap-1 bg-teal-50 text-teal-800 px-2 py-0.5 rounded-md border border-dashed border-teal-400">
+                            <span class="w-2 h-2 rounded-full bg-teal-500"></span>同子音・脱落
+                        </span>
+                    </div>
+                    <span class="text-[11px] text-slate-400 font-medium">カードをタップで個別再生</span>
+                </div>
+
+                <!-- 全体発音カタカナイメージ -->
+                <div id="fullKatakanaBox" class="bg-white rounded-xl px-4 py-2.5 border border-slate-200/80 text-center shadow-sm">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-500 block">ネイティブ発音イメージ（カタカナ目安）</span>
+                    <p id="fullKatakanaText" class="text-sm sm:text-base font-bold text-slate-700 mt-0.5 tracking-wide">
+                        ウィ ラーナウダ ミルク イェスタデイ
+                    </p>
+                </div>
+
+                <!-- チャンクごとのビジュアル＆ルビ表示 -->
+                <div id="analyzedSentenceContainer" class="flex flex-wrap items-stretch justify-center gap-2 sm:gap-2.5 py-2 min-h-[4.5rem]">
+                    <!-- JSで動的生成 -->
+                </div>
+
+                <!-- 詳細解説リスト -->
+                <div id="linkingGuideBox" class="pt-3 border-t border-slate-200/80 space-y-2">
+                    <!-- JSで動的生成 -->
+                </div>
+            </section>
+
+            <!-- メッセージ表示ボックス（alertの代替） -->
+            <div id="messageBox" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-xs sm:text-sm rounded-xl p-3.5 flex items-start gap-2.5">
+                <svg class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <span id="messageText"></span>
+            </div>
+
+            <!-- 再生コントロール群 -->
+            <section class="space-y-3">
+                <button id="playFullBtn" type="button"
+                    class="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold text-base sm:text-lg rounded-2xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-3 cursor-pointer">
+                    <svg id="playIcon" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    <span id="playBtnText">文全体を再生</span>
+                </button>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button id="playSlowBtn" type="button"
+                        class="py-3.5 px-4 bg-white hover:bg-indigo-50 active:scale-[0.99] text-indigo-700 font-bold text-sm rounded-2xl border-2 border-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer">
+                        <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span>ゆっくり再生 (0.65x)</span>
+                    </button>
+
+                    <button id="playChunkBtn" type="button"
+                        class="py-3.5 px-4 bg-blue-50 hover:bg-blue-100 active:scale-[0.99] text-blue-800 font-bold text-sm rounded-2xl border border-blue-200 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                        </svg>
+                        <span id="playChunkBtnText" class="truncate">つながる部分だけ再生</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 速度・音声設定 -->
+            <section class="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="rateSlider" class="text-xs font-bold text-slate-600">再生スピード</label>
+                        <span id="rateValue" class="text-xs font-extrabold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded">1.00x</span>
+                    </div>
+                    <input id="rateSlider" type="range" min="0.5" max="1.25" step="0.05" value="1.0"
+                        class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                    <div class="flex justify-between text-[10px] text-slate-400 mt-1 font-medium">
+                        <span>0.5x</span>
+                        <span>1.0x (標準)</span>
+                        <span>1.25x</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="voiceSelect" class="block text-xs font-bold text-slate-600 mb-1">英語ボイス選択</label>
+                    <select id="voiceSelect"
+                        class="w-full bg-white border border-slate-300 text-slate-700 text-xs sm:text-sm font-medium rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="">英語音声を読み込み中...</option>
+                    </select>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- コピー完了トースト -->
+    <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs sm:text-sm font-bold px-4 py-2.5 rounded-full shadow-xl z-50 flex items-center gap-2">
+        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <span id="toastText">共有リンクをコピーしました！</span>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const synth = window.speechSynthesis;
+            const messageBox = document.getElementById('messageBox');
+            const messageText = document.getElementById('messageText');
+
+            function showMessage(text) {
+                messageText.textContent = text;
+                messageBox.classList.remove('hidden');
+            }
+
+            function hideMessage() {
+                messageBox.classList.add('hidden');
+            }
+
+            function showToast(text) {
+                const toast = document.getElementById('toast');
+                const toastText = document.getElementById('toastText');
+                toastText.textContent = text;
+                toast.classList.remove('hidden');
+                toast.classList.add('toast-enter');
+                clearTimeout(window.__toastTimer);
+                window.__toastTimer = setTimeout(() => {
+                    toast.classList.add('hidden');
+                    toast.classList.remove('toast-enter');
+                }, 2600);
+            }
+
+            if (!synth) {
+                showMessage('お使いのブラウザは音声合成に対応していません。ChromeやSafariなどの最新ブラウザをお試しください。');
+            }
+
+            // UI要素
+            const sentenceInput = document.getElementById('sentenceInput');
+            const clearInputBtn = document.getElementById('clearInputBtn');
+            const shareUrlBtn = document.getElementById('shareUrlBtn');
+            const presetContainer = document.getElementById('presetContainer');
+            const analyzedSentenceContainer = document.getElementById('analyzedSentenceContainer');
+            const fullKatakanaText = document.getElementById('fullKatakanaText');
+            const linkingGuideBox = document.getElementById('linkingGuideBox');
+
+            const playFullBtn = document.getElementById('playFullBtn');
+            const playSlowBtn = document.getElementById('playSlowBtn');
+            const playChunkBtn = document.getElementById('playChunkBtn');
+            const playChunkBtnText = document.getElementById('playChunkBtnText');
+            const playBtnText = document.getElementById('playBtnText');
+            const statusBadge = document.getElementById('statusBadge');
+            const rateSlider = document.getElementById('rateSlider');
+            const rateValue = document.getElementById('rateValue');
+            const voiceSelect = document.getElementById('voiceSelect');
+
+            // URLパラメータ (?text=...) からの初期テキスト読み込み
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const sharedText = params.get('text');
+                if (sharedText && sharedText.trim()) {
+                    sentenceInput.value = sharedText.trim();
+                }
+            } catch (e) {
+                // URLSearchParams非対応環境へのフォールバック
+            }
+
+            // 共有リンクコピー機能
+            shareUrlBtn.addEventListener('click', () => {
+                const currentText = sentenceInput.value.trim();
+                const baseUrl = window.location.href.split('?')[0];
+                const shareUrl = currentText ? `${baseUrl}?text=${encodeURIComponent(currentText)}` : baseUrl;
+
+                const tempInput = document.createElement('input');
+                tempInput.value = shareUrl;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                try {
+                    document.execCommand('copy');
+                    showToast('共有用URLをコピーしました！LINE等に貼って送れます');
+                } catch (err) {
+                    showMessage('URLのコピーに失敗しました。ブラウザのアドレスバーからコピーしてください。');
+                }
+                document.body.removeChild(tempInput);
+            });
+
+            // 4種類の音声変化を網羅したプリセット例文
+            const PRESETS = [
+                "We ran out of milk yesterday.",
+                "Did you check it out in an hour?",
+                "What are you going to do about it?",
+                "I want you to give me a hand next time.",
+                "Would you like a cup of coffee?",
+                "Let me know if you have to leave early."
+            ];
+
+            PRESETS.forEach(phrase => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = phrase;
+                btn.className = 'text-xs bg-slate-100 hover:bg-indigo-100 text-slate-700 hover:text-indigo-800 font-semibold px-2.5 py-1.5 rounded-xl border border-slate-200/80 transition-colors cursor-pointer';
+                btn.addEventListener('click', () => {
+                    sentenceInput.value = phrase;
+                    analyzeAndRender();
+                });
+                presetContainer.appendChild(btn);
+            });
+
+            // =========================================================================
+            // 高精度・音声学ベース リンキング＆カタカナ変換エンジン
+            // =========================================================================
+
+            // 1. 頻出英単語のネイティブ発音ベースカタカナ辞書
+            const WORD_KATAKANA_DICT = {
+                'we': 'ウィ', 'i': 'アイ', 'you': 'ユー', 'he': 'ヒー', 'she': 'シー', 'it': 'イッ', 'they': 'ゼイ',
+                'me': 'ミー', 'him': 'イム', 'her': 'アー', 'us': 'アス', 'them': 'ゼム',
+                'my': 'マイ', 'your': 'ユア', 'his': 'イズ', 'our': 'アワ', 'their': 'ゼア',
+                'a': 'ア', 'an': 'アン', 'the': 'ザ', 'this': 'ディス', 'that': 'ザッ', 'these': 'ジーズ', 'those': 'ゾーズ',
+                'in': 'イン', 'on': 'オン', 'at': 'アッ', 'to': 'トゥ', 'for': 'フォー', 'with': 'ウィズ', 'from': 'フロム',
+                'of': 'アヴ', 'out': 'アウト', 'up': 'アップ', 'off': 'オフ', 'about': 'アバウト', 'into': 'イントゥ',
+                'and': 'アンド', 'but': 'バッ', 'or': 'オア', 'so': 'ソウ', 'if': 'イフ', 'because': 'ビコーズ',
+                'is': 'イズ', 'am': 'アム', 'are': 'アー', 'was': 'ワズ', 'were': 'ワー', 'be': 'ビー', 'been': 'ビン',
+                'do': 'ドゥ', 'does': 'ダズ', 'did': 'ディッ', 'done': 'ダン',
+                'have': 'ハヴ', 'has': 'ハズ', 'had': 'ハッ',
+                'can': 'キャン', 'could': 'クッ', 'will': 'ウィル', 'would': 'ウッ', 'should': 'シュッ', 'must': 'マス',
+                'what': 'ワッ', 'where': 'ウェア', 'when': 'ウェン', 'why': 'ワイ', 'who': 'フー', 'how': 'ハウ', 'which': 'ウィッチ',
+                'ran': 'ラン', 'run': 'ラン', 'milk': 'ミルク', 'yesterday': 'イェスタデイ', 'today': 'トゥデイ', 'tomorrow': 'トゥモロウ',
+                'check': 'チェック', 'hour': 'アワー', 'hours': 'アワーズ', 'honest': 'オネスト', 'honor': 'オナー',
+                'going': 'ゴーイン', 'want': 'ウォン', 'got': 'ガッ', 'get': 'ゲッ', 'give': 'ギヴ', 'let': 'レッ',
+                'know': 'ノウ', 'don\'t': 'ドン', 'can\'t': 'キャン', 'won\'t': 'ウォン', 'didn\'t': 'ディドゥン',
+                'hand': 'ハンド', 'next': 'ネクス', 'time': 'タイム', 'last': 'ラス', 'night': 'ナイト', 'right': 'ライ', 'now': 'ナウ',
+                'like': 'ライク', 'cup': 'カップ', 'coffee': 'コーヒー', 'tea': 'ティー', 'water': 'ウォーター',
+                'leave': 'リーヴ', 'early': 'アーリー', 'late': 'レイト', 'make': 'メイク', 'take': 'テイク', 'come': 'カム',
+                'pick': 'ピック', 'put': 'プッ', 'look': 'ルック', 'good': 'グッ', 'day': 'デイ', 'cat': 'キャット', 'black': 'ブラック',
+                'sit': 'シッ', 'down': 'ダウン', 'stop': 'ストップ', 'talking': 'トーキン', 'nice': 'ナイス', 'meet': 'ミート',
+                'miss': 'ミス', 'use': 'ユーズ', 'used': 'ユースト', 'university': 'ユニヴァーシティ', 'unique': 'ユニーク',
+                'kind': 'カインド', 'sort': 'ソート', 'lot': 'ロット', 'lots': 'ロッツ', 'bit': 'ビッ', 'little': 'リトル',
+                'tell': 'テル', 'ask': 'アスク', 'call': 'コール', 'see': 'シー', 'say': 'セイ', 'said': 'セッ',
+                'think': 'シンク', 'thought': 'ソート', 'work': 'ワーク', 'home': 'ホーム', 'back': 'バック', 'here': 'ヒア', 'there': 'ゼア'
+            };
+
+            // 連結したチャンク全体に対するネイティブ発音カタカナオーバーライド辞書
+            const CONNECTED_PHRASE_KATAKANA = {
+                'ran out of': 'ラーナウダ',
+                'ran out': 'ラーナウト',
+                'out of': 'アウダ',
+                'check it out': 'チェキラウト',
+                'check it': 'チェキッ',
+                'it out': 'イラウト',
+                'in an hour': 'イナナウア',
+                'in an': 'イナン',
+                'an hour': 'アナウア',
+                'what are you': 'ワラユー',
+                'what are': 'ワラ',
+                'are you': 'アーユ',
+                'going to': 'ガナ',
+                'do about it': 'ドゥアバウリッ',
+                'about it': 'アバウリッ',
+                'want you to': 'ウォンチュタ',
+                'want you': 'ウォンチュ',
+                'want to': 'ワナ',
+                'give me a': 'ギミア',
+                'give me': 'ギミ',
+                'let me': 'レミ',
+                'next time': 'ネクスタイム',
+                'last night': 'ラスナイト',
+                'would you': 'ウッジュ',
+                'did you': 'ディジュ',
+                'could you': 'クッジュ',
+                'should you': 'シュッジュ',
+                'got you': 'ガッチャ',
+                'meet you': 'ミーチュ',
+                'miss you': 'ミッシュ',
+                'don\'t you': 'ドンチュ',
+                'can\'t you': 'キャンチュ',
+                'a cup of': 'アカパ',
+                'cup of': 'カパ',
+                'kind of': 'カインダ',
+                'sort of': 'ソータ',
+                'lot of': 'ラダ',
+                'lots of': 'ラッツァ',
+                'have to': 'ハフタ',
+                'has to': 'ハスタ',
+                'had to': 'ハッタ',
+                'got to': 'ガラ',
+                'used to': 'ユースタ',
+                'if you': 'イフュ',
+                'leave early': 'リーヴァーリー',
+                'pick it up': 'ピキラップ',
+                'pick it': 'ピキッ',
+                'it up': 'イラップ',
+                'make it': 'メイキッ',
+                'take it': 'テイキッ',
+                'take off': 'テイコフ',
+                'come in': 'カミン',
+                'give up': 'ギヴァップ',
+                'don\'t know': 'ドノウ',
+                'good day': 'グッデイ',
+                'sit down': 'シッダウン',
+                'black cat': 'ブラッキャット'
+            };
+
+            // 単語の「発音上の末尾」が子音か母音かを高精度判定
+            function getPhoneticEnding(word) {
+                const w = word.replace(/[^a-zA-Z']/g, '').toLowerCase();
+                if (!w) return 'other';
+
+                // 末尾が母音音素になる単語（例: see, go, too, we, me, he, she, be, the, day, say, know, new）
+                const vowelEndingExceptions = new Set([
+                    'i', 'a', 'we', 'me', 'he', 'she', 'be', 'the', 'see', 'free', 'tree', 'three', 'agree',
+                    'go', 'so', 'no', 'to', 'do', 'too', 'two', 'who', 'into', 'onto', 'you', 'new', 'knew',
+                    'know', 'show', 'snow', 'grow', 'throw', 'blow', 'slow', 'low', 'row', 'window', 'tomorrow',
+                    'day', 'say', 'way', 'may', 'pay', 'play', 'stay', 'today', 'yesterday', 'away',
+                    'my', 'by', 'try', 'why', 'fly', 'cry', 'buy', 'guy', 'hi', 'idea', 'area'
+                ]);
+                if (vowelEndingExceptions.has(w)) return 'vowel';
+
+                // -ee, -oo, -ay, -ey, -oy, -ow(オウ音), -aw 終わりは母音
+                if (/(ee|oo|ay|ey|oy|aw)$/.test(w)) return 'vowel';
+
+                // サイレントe（語尾がeでも発音は子音で終わる単語: make, have, give, come, like, nice, time, leave, close, use, etc.）
+                if (w.endsWith('e') && w.length > 2) {
+                    // -le (little, table, apple) -> /l/ 子音終わり
+                    // -ce, -se, -ge, -ve, -ke, -te, -de, -me, -ne, -pe, -ze -> すべて子音終わり
+                    return 'consonant';
+                }
+
+                // 末尾の文字が a, i, o, u なら母音
+                if (/[aiou]$/.test(w)) return 'vowel';
+
+                // それ以外は子音音素終わり
+                return 'consonant';
+            }
+
+            // 単語の「発音上の先頭」が母音か子音かを高精度判定
+            function getPhoneticStart(word) {
+                const w = word.replace(/[^a-zA-Z']/g, '').toLowerCase();
+                if (!w) return 'other';
+
+                // 無音の h で始まる単語（実質母音始まり）
+                const silentHWords = new Set(['hour', 'hours', 'hourly', 'honest', 'honestly', 'honesty', 'honor', 'honorable', 'heir', 'herb', 'herbs']);
+                if (silentHWords.has(w)) return 'vowel';
+
+                // u / eu で始まるが実際は子音 /j/（ユ音）で始まる単語
+                if (/^(uni|use|usu|uti|euro|euph)/.test(w) && !/^(unimp|unint|uninf|uninv)/.test(w)) {
+                    return 'consonant';
+                }
+                // one, once は /w/ 子音始まり
+                if (w === 'one' || w === 'once') return 'consonant';
+
+                // a, e, i, o, u で始まる場合は母音
+                if (/^[aeiou]/.test(w)) return 'vowel';
+
+                return 'consonant';
+            }
+
+            // 2単語間の音声変化（4カテゴリ）を詳細判定
+            function analyzePairConnection(wordA, wordB) {
+                const cleanA = wordA.replace(/[^a-zA-Z']/g, '').toLowerCase();
+                const cleanB = wordB.replace(/[^a-zA-Z']/g, '').toLowerCase();
+                if (!cleanA || !cleanB) return null;
+
+                const pair = `${cleanA} ${cleanB}`;
+
+                // ---------------------------------------------------------
+                // カテゴリ2: 音の融合（Assimilation: /d/+/j/->/dʒ/, /t/+/j/->/tʃ/, /s/+/j/->/ʃ/）
+                // ---------------------------------------------------------
+                const assimilationMap = {
+                    'did you': { kana: 'ディジュ', desc: 'd + y が融合して「ジュ」の音に変化します' },
+                    'would you': { kana: 'ウッジュ', desc: 'd + y が融合して「ジュ」の音に変化します' },
+                    'could you': { kana: 'クッジュ', desc: 'd + y が融合して「ジュ」の音に変化します' },
+                    'should you': { kana: 'シュッジュ', desc: 'd + y が融合して「ジュ」の音に変化します' },
+                    'had you': { kana: 'ハッジュ', desc: 'd + y が融合して「ジュ」の音に変化します' },
+                    'told you': { kana: 'トールジュ', desc: 'd + y が融合して「ジュ」の音に変化します' },
+                    'want you': { kana: 'ウォンチュ', desc: 't + y が融合して「チュ」の音に変化します' },
+                    'got you': { kana: 'ガッチャ', desc: 't + y が融合して「チャ／チュ」の音に変化します' },
+                    'meet you': { kana: 'ミーチュ', desc: 't + y が融合して「チュ」の音に変化します' },
+                    'get you': { kana: 'ゲッチュ', desc: 't + y が融合して「チュ」の音に変化します' },
+                    'let you': { kana: 'レッチュ', desc: 't + y が融合して「チュ」の音に変化します' },
+                    'don\'t you': { kana: 'ドンチュ', desc: 't + y が融合して「チュ」の音に変化します' },
+                    'can\'t you': { kana: 'キャンチュ', desc: 't + y が融合して「チュ」の音に変化します' },
+                    'won\'t you': { kana: 'ウォンチュ', desc: 't + y が融合して「チュ」の音に変化します' },
+                    'miss you': { kana: 'ミッシュ', desc: 's + y が融合して「シュ」の音に変化します' },
+                    'bless you': { kana: 'ブレッシュ', desc: 's + y が融合して「シュ」の音に変化します' }
+                };
+                if (assimilationMap[pair]) {
+                    return {
+                        category: 'assimilation',
+                        badge: '音の融合',
+                        kanaHint: assimilationMap[pair].kana,
+                        desc: assimilationMap[pair].desc
+                    };
+                }
+
+                // ---------------------------------------------------------
+                // カテゴリ3: リダクション・フラッピング（Reduction & Flapping）
+                // ---------------------------------------------------------
+                const reductionMap = {
+                    'going to': { kana: 'ガナ', desc: 'going to が短縮され「ガナ (gonna)」になります' },
+                    'want to': { kana: 'ワナ', desc: 'want to が短縮され「ワナ (wanna)」になります' },
+                    'got to': { kana: 'ガラ', desc: 'got to が短縮され「ガラ (gotta)」になります' },
+                    'have to': { kana: 'ハフタ', desc: 'v が無声化し to が弱まり「ハフタ」になります' },
+                    'has to': { kana: 'ハスタ', desc: 's と弱まった to がつながり「ハスタ」になります' },
+                    'used to': { kana: 'ユースタ', desc: 'd が落ち to が弱まり「ユースタ」になります' },
+                    'out of': { kana: 'アウダ', desc: 't が弾き音（ラ行）になり of の v が弱く消えます' },
+                    'kind of': { kana: 'カインダ', desc: 'd と o がつながり of の v が弱く消えます' },
+                    'sort of': { kana: 'ソータ', desc: 't が弾き音になり of の v が弱く消えます' },
+                    'lot of': { kana: 'ラダ', desc: 't が弾き音になり of の v が弱く消えます' },
+                    'lots of': { kana: 'ラッツァ', desc: 's と o がつながり of の v が弱く消えます' },
+                    'cup of': { kana: 'カパ', desc: 'p と o がつながり of の v が弱く消えます' },
+                    'what are': { kana: 'ワラ', desc: 't が母音に挟まれて弾き音（ラ行）になります' },
+                    'let me': { kana: 'レミ', desc: 't が脱落し「レミ (lemme)」のように発音されます' },
+                    'give me': { kana: 'ギミ', desc: 'v が脱落し「ギミ (gimme)」のように発音されます' },
+                    'tell them': { kana: 'テレム', desc: 'them の th が落ち「テレム」のようにつながります' },
+                    'ask him': { kana: 'アスキム', desc: 'him の h が落ち「アスキム」とつながります' },
+                    'tell her': { kana: 'テラー', desc: 'her の h が落ち「テラー」とつながります' },
+                    'in her': { kana: 'イナー', desc: 'her の h が落ち「イナー」とつながります' }
+                };
+                if (reductionMap[pair]) {
+                    return {
+                        category: 'reduction',
+                        badge: '弱化・弾き音',
+                        kanaHint: reductionMap[pair].kana,
+                        desc: reductionMap[pair].desc
+                    };
+                }
+
+                // 代名詞 him / her / them の h/th 脱落（子音終わり + him/her/them）
+                const endType = getPhoneticEnding(cleanA);
+                const startType = getPhoneticStart(cleanB);
+
+                if (endType === 'consonant' && (cleanB === 'him' || cleanB === 'her' || cleanB === 'them')) {
+                    return {
+                        category: 'reduction',
+                        badge: '弱化・h/th脱落',
+                        kanaHint: `${cleanA} + ${cleanB === 'them' ? 'エム' : cleanB === 'him' ? 'イム' : 'アー'}`,
+                        desc: `代名詞「${cleanB}」の最初の音（h/th）が落ち、前の子音とつながります`
+                    };
+                }
+
+                // ---------------------------------------------------------
+                // カテゴリ1: 子音 ＋ 母音 の連結（Catenation）
+                // ---------------------------------------------------------
+                if (endType === 'consonant' && startType === 'vowel') {
+                    // 母音に挟まれた t のフラッピング（例: check it, it out, about it, get a, put it）
+                    const lastConsonant = cleanA.endsWith('e') ? cleanA.slice(-2, -1) : cleanA.slice(-1);
+                    if (lastConsonant === 't' && !cleanA.endsWith('nt') && !cleanA.endsWith('st') && !cleanA.endsWith('ct')) {
+                        return {
+                            category: 'reduction',
+                            badge: '連結＋弾き音',
+                            kanaHint: 'tがラ行化',
+                            desc: `「${cleanA}」の t が母音に挟まれてラ行に近い音になり、「${cleanB}」とつながります`
+                        };
+                    }
+
+                    // 語尾が ve / f の場合の表現
+                    const silentENote = cleanA.endsWith('e') ? `（語尾のeは発音せず直前の子音と連結）` : '';
+                    return {
+                        category: 'catenation',
+                        badge: '子音＋母音連結',
+                        kanaHint: '音がつながる',
+                        desc: `「${cleanA}」の最後の子音と「${cleanB}」の最初の母音がなめらかにつながります${silentENote}`
+                    };
+                }
+
+                // ---------------------------------------------------------
+                // カテゴリ4: 同子音の連結 ＆ 破裂音の脱落（Gemination & Elision）
+                // ---------------------------------------------------------
+                const getFinalConsonantChar = (w) => {
+                    if (w.endsWith('e') && w.length > 2) return w.slice(-2, -1);
+                    return w.slice(-1);
+                };
+                const lastC = getFinalConsonantChar(cleanA);
+                const firstC = cleanB.slice(0, 1);
+
+                // 同じ子音または同じ調音点（t/d, p/b, k/g）の連続
+                const homorganicPairs = new Set(['td', 'dt', 'pb', 'bp', 'kg', 'gk', 'ck', 'kc']);
+                if (endType === 'consonant' && startType === 'consonant') {
+                    if (lastC === firstC || homorganicPairs.has(lastC + firstC)) {
+                        return {
+                            category: 'gemination',
+                            badge: '同子音の連結',
+                            kanaHint: '1つの音に統合',
+                            desc: `「${cleanA}」の語尾と「${cleanB}」の語頭で同じ・似た子音が重なるため、1回分として発音されます`
+                        };
+                    }
+
+                    // 語尾が -st, -xt, -nd, -nt, -ft, -pt などの子音クラスターで後ろに子音が続く場合の t/d 脱落
+                    if (/(st|xt|nd|nt|ft|pt|lt|ld)$/.test(cleanA)) {
+                        return {
+                            category: 'gemination',
+                            badge: '語尾子音の脱落',
+                            kanaHint: `最後の${lastC}が弱化`,
+                            desc: `子音が連続するため、「${cleanA}」の最後の「${lastC}」の音が飲み込まれて脱落します`
+                        };
+                    }
+                }
+
+                return null;
+            }
+
+            // 単語またはチャンクのカタカナ発音を生成するヘルパー
+            function getChunkKatakana(wordsArray) {
+                const cleanedWords = wordsArray.map(w => w.replace(/[^a-zA-Z']/g, '').toLowerCase()).filter(Boolean);
+                if (cleanedWords.length === 0) return '';
+
+                const fullPhrase = cleanedWords.join(' ');
+                if (CONNECTED_PHRASE_KATAKANA[fullPhrase]) {
+                    return CONNECTED_PHRASE_KATAKANA[fullPhrase];
+                }
+
+                // 3語以上のチャンクなら、部分一致する2語フレーズを置換しながら組み立て
+                if (cleanedWords.length >= 2) {
+                    let resultParts = [];
+                    let i = 0;
+                    while (i < cleanedWords.length) {
+                        if (i + 2 < cleanedWords.length) {
+                            const tri = `${cleanedWords[i]} ${cleanedWords[i + 1]} ${cleanedWords[i + 2]}`;
+                            if (CONNECTED_PHRASE_KATAKANA[tri]) {
+                                resultParts.push(CONNECTED_PHRASE_KATAKANA[tri]);
+                                i += 3;
+                                continue;
+                            }
+                        }
+                        if (i + 1 < cleanedWords.length) {
+                            const bi = `${cleanedWords[i]} ${cleanedWords[i + 1]}`;
+                            if (CONNECTED_PHRASE_KATAKANA[bi]) {
+                                resultParts.push(CONNECTED_PHRASE_KATAKANA[bi]);
+                                i += 2;
+                                continue;
+                            }
+                        }
+                        resultParts.push(getSingleWordKatakana(cleanedWords[i]));
+                        i += 1;
+                    }
+                    // チャンク内の単語は中黒なしで連結感を表現
+                    return resultParts.join('');
+                }
+
+                return getSingleWordKatakana(cleanedWords[0]);
+            }
+
+            function getSingleWordKatakana(cleanWord) {
+                if (WORD_KATAKANA_DICT[cleanWord]) {
+                    return WORD_KATAKANA_DICT[cleanWord];
+                }
+                // 簡易フォールバック変換（辞書にない単語用）
+                let s = cleanWord
+                    .replace(/tion$/, 'ション')
+                    .replace(/sion$/, 'ジョン')
+                    .replace(/ing$/, 'イン')
+                    .replace(/ly$/, 'リー')
+                    .replace(/er$/, 'アー')
+                    .replace(/ed$/, 'ド')
+                    .replace(/th/g, 'ス')
+                    .replace(/sh/g, 'シュ')
+                    .replace(/ch/g, 'チュ')
+                    .replace(/ph/g, 'フ')
+                    .replace(/qu/g, 'クゥ')
+                    .replace(/ck/g, 'ック')
+                    .replace(/ee|ea/g, 'イー')
+                    .replace(/oo/g, 'ウー')
+                    .replace(/ou|ow/g, 'アウ')
+                    .replace(/ai|ay/g, 'エイ')
+                    .replace(/a/g, 'ア')
+                    .replace(/e/g, 'エ')
+                    .replace(/i/g, 'イ')
+                    .replace(/o/g, 'オ')
+                    .replace(/u/g, 'ア')
+                    .replace(/b/g, 'ブ')
+                    .replace(/c|k/g, 'ク')
+                    .replace(/d/g, 'ド')
+                    .replace(/f/g, 'フ')
+                    .replace(/g/g, 'グ')
+                    .replace(/h/g, 'ハ')
+                    .replace(/j/g, 'ジュ')
+                    .replace(/l/g, 'ル')
+                    .replace(/m/g, 'ム')
+                    .replace(/n/g, 'ン')
+                    .replace(/p/g, 'プ')
+                    .replace(/r/g, 'ル')
+                    .replace(/s/g, 'ス')
+                    .replace(/t/g, 'ト')
+                    .replace(/v/g, 'ヴ')
+                    .replace(/w/g, 'ウ')
+                    .replace(/x/g, 'クス')
+                    .replace(/y/g, 'イ')
+                    .replace(/z/g, 'ズ');
+                return s;
+            }
+
+            let currentLinkedChunk = "";
+            let chunkElementsMap = []; // 再生ハイライト用
+
+            // =========================================================================
+            // 画面解析＆レンダリング処理
+            // =========================================================================
+            function analyzeAndRender() {
+                const rawText = sentenceInput.value.trim();
+                analyzedSentenceContainer.innerHTML = '';
+                linkingGuideBox.innerHTML = '';
+                chunkElementsMap = [];
+
+                if (!rawText) {
+                    fullKatakanaText.textContent = '---';
+                    analyzedSentenceContainer.innerHTML = '<span class="text-sm text-slate-400 py-4">上のボックスに英文を入力すると自動解析します</span>';
+                    linkingGuideBox.innerHTML = '<p class="text-xs text-slate-400 text-center">子音＋母音の連結、音の融合、弱化、同子音の脱落などを自動検出します。</p>';
+                    currentLinkedChunk = "";
+                    playChunkBtn.disabled = true;
+                    playChunkBtnText.textContent = 'つながる部分だけ再生';
+                    return;
+                }
+
+                const tokens = rawText.split(/\s+/);
+                const connections = [];
+                for (let i = 0; i < tokens.length - 1; i++) {
+                    connections.push(analyzePairConnection(tokens[i], tokens[i + 1]));
+                }
+
+                // つながる単語同士をグループ（チャンク）化
+                const chunks = [];
+                let currentGroup = [{ word: tokens[0], connToNext: connections[0] }];
+
+                for (let i = 1; i < tokens.length; i++) {
+                    if (connections[i - 1]) {
+                        currentGroup.push({ word: tokens[i], connToNext: connections[i] });
+                    } else {
+                        chunks.push(currentGroup);
+                        currentGroup = [{ word: tokens[i], connToNext: connections[i] }];
+                    }
+                }
+                chunks.push(currentGroup);
+
+                // チャンクごとのカタカナ生成＆全体カタカナ表示
+                const chunkKatakanaList = chunks.map(group => getChunkKatakana(group.map(g => g.word)));
+                fullKatakanaText.textContent = chunkKatakanaList.join('　');
+
+                // 最も重要な連結チャンクを部分再生ボタンに割り当て
+                let bestChunkPhrase = "";
+                chunks.forEach(group => {
+                    if (group.length >= 2) {
+                        const phrase = group.map(g => g.word).join(' ');
+                        if (phrase.length > bestChunkPhrase.length) {
+                            bestChunkPhrase = phrase;
+                        }
+                    }
+                });
+
+                currentLinkedChunk = bestChunkPhrase;
+                if (currentLinkedChunk) {
+                    playChunkBtn.disabled = false;
+                    const labelText = currentLinkedChunk.length > 20 ? currentLinkedChunk.slice(0, 18) + '…' : currentLinkedChunk;
+                    playChunkBtnText.textContent = `「${labelText}」だけ再生`;
+                } else {
+                    playChunkBtn.disabled = true;
+                    playChunkBtnText.textContent = 'リンキング箇所なし';
+                }
+
+                // カテゴリごとのスタイル定義
+                const categoryStyles = {
+                    catenation: {
+                        card: 'bg-blue-50/90 hover:bg-blue-100 border-blue-300 text-blue-950',
+                        arc: 'text-blue-600',
+                        kana: 'text-blue-700 bg-blue-100/80'
+                    },
+                    assimilation: {
+                        card: 'bg-purple-50/90 hover:bg-purple-100 border-purple-300 text-purple-950',
+                        arc: 'text-purple-600',
+                        kana: 'text-purple-700 bg-purple-100/80'
+                    },
+                    reduction: {
+                        card: 'bg-amber-50/90 hover:bg-amber-100 border-amber-300 text-amber-950',
+                        arc: 'text-amber-600',
+                        kana: 'text-amber-800 bg-amber-100/80'
+                    },
+                    gemination: {
+                        card: 'bg-teal-50/70 hover:bg-teal-100/70 border-dashed border-teal-400 text-teal-950',
+                        arc: 'text-teal-600',
+                        kana: 'text-teal-800 bg-teal-100/80'
+                    }
+                };
+
+                // チャンクカードを描画
+                chunks.forEach((group, chunkIdx) => {
+                    const groupPhrase = group.map(g => g.word).join(' ');
+                    const chunkKana = chunkKatakanaList[chunkIdx];
+
+                    const cardBtn = document.createElement('button');
+                    cardBtn.type = 'button';
+                    cardBtn.title = `タップして「${groupPhrase}」を発音`;
+
+                    if (group.length >= 2) {
+                        // チャンク内の主要な音声変化カテゴリを決定
+                        const cats = group.slice(0, -1).map(g => g.connToNext.category);
+                        let mainCat = 'catenation';
+                        if (cats.includes('assimilation')) mainCat = 'assimilation';
+                        else if (cats.includes('reduction')) mainCat = 'reduction';
+                        else if (cats.includes('gemination') && !cats.includes('catenation')) mainCat = 'gemination';
+
+                        const style = categoryStyles[mainCat];
+
+                        cardBtn.className = `${style.card} border-2 rounded-2xl px-3 py-2 shadow-sm transition-all flex flex-col items-center justify-between cursor-pointer active:scale-95`;
+
+                        const wordsRow = document.createElement('div');
+                        wordsRow.className = 'text-lg sm:text-xl font-extrabold tracking-tight flex items-center flex-wrap justify-center';
+
+                        group.forEach((item, idx) => {
+                            const wSpan = document.createElement('span');
+                            wSpan.textContent = item.word;
+                            wordsRow.appendChild(wSpan);
+
+                            if (idx < group.length - 1) {
+                                const connStyle = categoryStyles[item.connToNext.category] || style;
+                                const arc = document.createElement('span');
+                                arc.className = `arc-connector mx-1 ${connStyle.arc}`;
+                                arc.textContent = '‿';
+                                wordsRow.appendChild(arc);
+                            }
+                        });
+
+                        const kanaBadge = document.createElement('span');
+                        kanaBadge.className = `text-[11px] font-bold px-2 py-0.5 rounded-md mt-1.5 ${style.kana}`;
+                        kanaBadge.textContent = chunkKana;
+
+                        cardBtn.appendChild(wordsRow);
+                        cardBtn.appendChild(kanaBadge);
+                    } else {
+                        // 単独単語カード
+                        cardBtn.className = 'bg-white hover:bg-slate-100 border border-slate-200/90 text-slate-800 rounded-2xl px-3 py-2 transition-all flex flex-col items-center justify-between cursor-pointer active:scale-95';
+
+                        const wordDiv = document.createElement('div');
+                        wordDiv.className = 'text-lg sm:text-xl font-bold tracking-tight';
+                        wordDiv.textContent = group[0].word;
+
+                        const kanaSpan = document.createElement('span');
+                        kanaSpan.className = 'text-[11px] font-medium text-slate-400 mt-1.5';
+                        kanaSpan.textContent = chunkKana;
+
+                        cardBtn.appendChild(wordDiv);
+                        cardBtn.appendChild(kanaSpan);
+                    }
+
+                    cardBtn.addEventListener('click', () => {
+                        speakText(groupPhrase, 0.9, null, cardBtn);
+                    });
+
+                    analyzedSentenceContainer.appendChild(cardBtn);
+                    chunkElementsMap.push({ phrase: groupPhrase, el: cardBtn });
+                });
+
+                // 検出されたリンキング箇所の解説リストを生成
+                const detectedList = [];
+                for (let i = 0; i < connections.length; i++) {
+                    if (connections[i]) {
+                        detectedList.push({
+                            pair: `${tokens[i]} ‿ ${tokens[i + 1]}`,
+                            ...connections[i]
+                        });
+                    }
+                }
+
+                const badgeColors = {
+                    catenation: 'bg-blue-100 text-blue-800 border-blue-200',
+                    assimilation: 'bg-purple-100 text-purple-800 border-purple-200',
+                    reduction: 'bg-amber-100 text-amber-800 border-amber-200',
+                    gemination: 'bg-teal-50 text-teal-800 border-dashed border-teal-400'
+                };
+
+                if (detectedList.length > 0) {
+                    linkingGuideBox.innerHTML = detectedList.map(item => `
+                        <div class="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5 bg-white p-2.5 rounded-xl border border-slate-200/70 text-xs">
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <span class="font-extrabold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">${item.pair}</span>
+                                <span class="font-bold px-2 py-0.5 rounded-md border ${badgeColors[item.category]}">${item.badge}</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed">${item.desc}</p>
+                        </div>
+                    `).join('');
+                } else {
+                    linkingGuideBox.innerHTML = `<p class="text-xs text-slate-500 text-center py-1">この文には目立つ連結・同化は見つかりませんでした。各単語カードをタップすると個別に発音を確認できます。</p>`;
+                }
+            }
+
+            sentenceInput.addEventListener('input', () => {
+                hideMessage();
+                analyzeAndRender();
+            });
+
+            clearInputBtn.addEventListener('click', () => {
+                sentenceInput.value = '';
+                sentenceInput.focus();
+                analyzeAndRender();
+            });
+
+            // =========================================================================
+            // 音声合成（Web Speech API）制御
+            // =========================================================================
+            let voices = [];
+
+            function populateVoices() {
+                if (!synth) return;
+                const allVoices = synth.getVoices();
+                const enVoices = allVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
+                voices = enVoices.length > 0 ? enVoices : allVoices;
+
+                voiceSelect.innerHTML = '';
+                if (voices.length === 0) {
+                    const opt = document.createElement('option');
+                    opt.textContent = '標準英語音声 (en-US)';
+                    opt.value = '';
+                    voiceSelect.appendChild(opt);
+                    return;
+                }
+
+                let defaultIndex = 0;
+                voices.forEach((voice, index) => {
+                    const option = document.createElement('option');
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    option.value = index;
+
+                    if (voice.lang === 'en-US' && defaultIndex === 0) {
+                        defaultIndex = index;
+                    }
+                    if (voice.lang === 'en-US' && (voice.name.includes('Google') || voice.name.includes('Samantha') || voice.name.includes('Aria') || voice.name.includes('Natural'))) {
+                        defaultIndex = index;
+                    }
+                    voiceSelect.appendChild(option);
+                });
+
+                voiceSelect.selectedIndex = defaultIndex;
+            }
+
+            populateVoices();
+            if (synth && speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = populateVoices;
+            }
+
+            rateSlider.addEventListener('input', (e) => {
+                rateValue.textContent = `${parseFloat(e.target.value).toFixed(2)}x`;
+            });
+
+            function clearActiveCardHighlights() {
+                chunkElementsMap.forEach(item => item.el.classList.remove('chunk-speaking'));
+            }
+
+            function setPlayingState(isPlaying, activeBtn = null, activeCard = null) {
+                clearActiveCardHighlights();
+                if (isPlaying) {
+                    statusBadge.classList.remove('hidden');
+                    statusBadge.classList.add('flex');
+                    if (activeBtn === playFullBtn) {
+                        playBtnText.textContent = '再生中... (タップで停止)';
+                        playFullBtn.classList.add('ring-4', 'ring-indigo-300');
+                    }
+                    if (activeCard) {
+                        activeCard.classList.add('chunk-speaking');
+                    }
+                } else {
+                    statusBadge.classList.add('hidden');
+                    statusBadge.classList.remove('flex');
+                    playBtnText.textContent = '文全体を再生';
+                    playFullBtn.classList.remove('ring-4', 'ring-indigo-300');
+                }
+            }
+
+            function speakText(text, customRate = null, triggerBtn = null, triggerCard = null) {
+                if (!synth) return;
+                const cleanText = text.trim();
+                if (!cleanText) {
+                    showMessage('再生する英文を入力してください。');
+                    return;
+                }
+                hideMessage();
+
+                try {
+                    if (synth.speaking) {
+                        synth.cancel();
+                        setPlayingState(false);
+                        if (triggerBtn && triggerBtn.dataset.speaking === 'true') {
+                            triggerBtn.dataset.speaking = 'false';
+                            return;
+                        }
+                    }
+
+                    [playFullBtn, playSlowBtn, playChunkBtn].forEach(btn => btn.dataset.speaking = 'false');
+
+                    const utterance = new SpeechSynthesisUtterance(cleanText);
+                    utterance.lang = 'en-US';
+
+                    const selectedIdx = voiceSelect.value;
+                    if (selectedIdx !== '' && voices[selectedIdx]) {
+                        utterance.voice = voices[selectedIdx];
+                    }
+
+                    utterance.rate = customRate !== null ? customRate : parseFloat(rateSlider.value);
+                    utterance.pitch = 1.0;
+
+                    utterance.onstart = () => {
+                        if (triggerBtn) triggerBtn.dataset.speaking = 'true';
+                        setPlayingState(true, triggerBtn, triggerCard);
+                    };
+
+                    utterance.onend = () => {
+                        if (triggerBtn) triggerBtn.dataset.speaking = 'false';
+                        setPlayingState(false);
+                    };
+
+                    utterance.onerror = (event) => {
+                        if (event.error !== 'interrupted' && event.error !== 'canceled') {
+                            showMessage('音声の再生中にエラーが発生しました。端末の音量やマナーモードをご確認ください。');
+                        }
+                        if (triggerBtn) triggerBtn.dataset.speaking = 'false';
+                        setPlayingState(false);
+                    };
+
+                    synth.speak(utterance);
+                } catch (err) {
+                    showMessage('音声再生の初期化に失敗しました。ページを再読み込みしてお試しください。');
+                    setPlayingState(false);
+                }
+            }
+
+            playFullBtn.addEventListener('click', () => {
+                speakText(sentenceInput.value, null, playFullBtn, null);
+            });
+
+            playSlowBtn.addEventListener('click', () => {
+                speakText(sentenceInput.value, 0.65, playSlowBtn, null);
+            });
+
+            playChunkBtn.addEventListener('click', () => {
+                if (currentLinkedChunk) {
+                    speakText(currentLinkedChunk, 0.9, playChunkBtn, null);
+                }
+            });
+
+            // 初期解析の実行
+            analyzeAndRender();
+        });
+    </script>
+</body>
+</html>
